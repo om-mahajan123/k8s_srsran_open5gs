@@ -1,0 +1,9 @@
+ues:
+  count: 1
+  baseIMSI: "001010000000001"
+  k: "465B5CE8B199B49FAA5F0A2EE238A6BC"
+  opc: "E8ED289DEBA952E4283B54E88E6183CA"
+
+mongodb:
+  host: "mongodb"
+  port: 27017

@@ -1,0 +1,85 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: subscriber-registration
+  namespace: open5gs
+  annotations:
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: wait-for-mongodb
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z {{ .Values.mongodb.host }} {{ .Values.mongodb.port }}; do echo waiting for mongodb; sleep 2; done']
+      containers:
+        - name: subscriber-registration
+          image: python:3.10
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              pip install pymongo -q
+              python3 << 'EOF'
+              from pymongo import MongoClient
+              from bson import ObjectId
+              import json
+
+              client = MongoClient("{{ .Values.mongodb.host }}", {{ .Values.mongodb.port }})
+              db = client["open5gs"]
+              collection = db["subscribers"]
+
+              base_imsi = int("{{ .Values.ues.baseIMSI }}")
+              count = {{ .Values.ues.count }}
+
+              for i in range(count):
+                  imsi = str(base_imsi + i).zfill(15)
+                  subscriber = {
+                      "_id": ObjectId(),
+                      "imsi": imsi,
+                      "subscribed_rau_tau_timer": 12,
+                      "network_access_mode": 0,
+                      "subscriber_status": 0,
+                      "access_restriction_data": 32,
+                      "slice": [{
+                          "sst": 1,
+                          "sd": "000001",
+                          "default_indicator": True,
+                          "session": [{
+                              "name": "internet",
+                              "type": 1,
+                              "pcc_rule": [],
+                              "ambr": {
+                                  "uplink": {"value": 1, "unit": 3},
+                                  "downlink": {"value": 1, "unit": 3}
+                              },
+                              "qos": {
+                                  "index": 9,
+                                  "arp": {
+                                      "priority_level": 8,
+                                      "pre_emption_capability": 1,
+                                      "pre_emption_vulnerability": 1
+                                  }
+                              }
+                          }]
+                      }],
+                      "ambr": {
+                          "uplink": {"value": 1, "unit": 3},
+                          "downlink": {"value": 1, "unit": 3}
+                      },
+                      "security": {
+                          "k": "{{ .Values.ues.k }}",
+                          "amf": "8000",
+                          "op": None,
+                          "opc": "{{ .Values.ues.opc }}"
+                      },
+                      "schema_version": 1,
+                      "__v": 0
+                  }
+                  collection.replace_one({"imsi": imsi}, subscriber, upsert=True)
+                  print(f"Registered subscriber {imsi}")
+
+              print(f"Successfully registered {count} subscribers")
+              EOF

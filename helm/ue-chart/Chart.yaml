@@ -1,0 +1,4 @@
+apiVersion: v2
+name: ue-chart
+description: Helm chart for srsRAN UE deployment with automatic subscriber registration
+version: 0.1.0

@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: srsran-ue1
+  namespace: open5gs
+  labels:
+    app: srsran
+    component: ue
+    name: ue1
+spec:
+  selector:
+    matchLabels:
+      app: srsran
+      component: ue
+      name: ue1
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: srsran
+        component: ue
+        name: ue1
+      annotations:
+        k8s.v1.cni.cncf.io/networks: '[
+          { "name": "n3network", "interface": "n3", "ips": [ "10.10.3.232/24" ]}
+          ]'
+    spec:
+      containers:
+        - image: ghcr.io/sulaimanalmani/srsranzmq/srsue:v1.1
+          imagePullPolicy: Always
+          name: ue
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["NET_ADMIN", "SYS_NICE", "IPC_LOCK", "CAP_NET_ADMIN"]
+          command: ["/bin/bash", "-c", "--"]
+          args:
+            - |
+              if [ "$DEBUG_MODE" = "true" ]; then
+                while true; do sleep 30; done;
+              else
+                /srsran/config/wrapper.sh
+              fi
+          env:
+            - name: DEBUG_MODE
+              value: "false"
+            - name: UE_COUNT                   
+              value: "{{ .Values.ues.count }}"
+            - name: PATH
+              value: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/srsran/config"
+          volumeMounts:
+            - mountPath: /srsran/config
+              name: ue-volume
+          ports:
+            - name: metrics
+              containerPort: 8000
+              protocol: TCP
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      volumes:
+        - name: ue-volume
+          configMap:
+            name: ue1-configmap
+            items:
+              - key: ue0.conf
+                path: ue0.conf
+              - key: multi_ue_scenario.py
+                path: multi_ue_scenario.py
+              - key: generate_ue_conf.py
+                path: generate_ue_conf.py
+              - key: wrapper.sh
+                path: wrapper.sh
+                mode: 0755
+              - key: add_route.sh
+                path: add_route.sh
+                mode: 0755
+              - key: start_ue.sh
+                path: start_ue.sh
+                mode: 0755
+              - key: start_gnu.sh
+                path: start_gnu.sh
+                mode: 0755
