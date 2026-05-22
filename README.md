@@ -15,20 +15,18 @@ This guide provides step-by-step instructions for deploying a testbed for srsRAN
 1. Clone the repository and add the `bin` directory to your `PATH`:
 
     ```bash
-    git clone https://github.com/sulaimanalmani/k8s_srsran_open5gs.git
+    git clone https://github.com/om-mahajan123/k8s_srsran_open5gs.git
     echo 'export PATH="/path/to/k8s_srsran_open5gs/bin:$PATH"' >> ~/.bashrc
     source ~/.bashrc
-    cd /path/to/k8s_srsran_open5gs/
-    git clone https://github.com/sulaimanalmani/testbed-automator.git
     ```
     
 ## Step 1: Install Kubernetes and Required Components
 
-Navigate to the `testbed_automator` directory and run the installation script:
+Navigate to the `testbed_automator` directory and run the installation script. Note that `testbed-automator` is a separate repository originally from [testbed-automator](https://github.com/sulaimanalmani/testbed-automator), the version included here has been slightly modified:
 
 ```bash
 cd /path/to/k8s_srsran_open5gs/testbed_automator/
-./install_k8s.sh
+./install.sh
 ```
 
 Make sure kubernetes is up and running using the follwoing commands:
@@ -53,13 +51,17 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack -f debug_kube-prometheus-values-nuc.yaml -n monitoring
 ```
 
-Make sure that monitoring containers are up and running using the follwoing command 
+Make sure that monitoring containers are up and running using the follwoing command: 
 ```bash
 kubectl get pods -n monitoring
 ```
 
-For monitoring the kubernetes cluster, you can access graphana at port `32000` using the user:password `admin:prom-operator`. If you are accessing the testbed using ssh, you need to port-forward port 32000 to the server using the following command:
+To access Grafana at port `32000` use credentials `admin:prom-operator`. If that password doesn't work, retrieve it with:
+```bash
+kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" | base64 --decode
+```
 
+If accessing via SSH, port-forward first:
 ```bash
 ssh -L 32000:localhost:32000 user@your-server-ip
 ```
@@ -76,16 +78,6 @@ kubectl apply -k ./networks5g/ -n open5gs
 cd path/to/k8s_srsran_open5gs/config/open5gs/
 kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.6.0/deploy/longhorn.yaml
 kubectl apply -k ./mongodb/ -n open5gs
-```
-
-5. Add subscribers using mongo-tools:
-```bash
-cd path/to/k8s_srsran_open5gs/config/open5gs/mongo-tools/
-sudo apt-get install python3.12-venv
-python3 -m venv ../venv
-source ../venv/bin/activate
-pip install bson pymongo
-python3 ./modify_subscribers.py add
 ```
 
 ## Step 3: Deploy Open5GS and srsRAN (zmq)
@@ -117,13 +109,20 @@ If the gNB successfully connects to the amf, you should see logs similar to the 
 
     
 ## Step 4: Deploy UEs and Connect to gNB
+This step replaces the previous manual process of adding subscribers and deploying UEs separately. The Helm chart automatically:
 
-1. Deploy UEs:
+- Registers the correct number of subscribers in MongoDB
+- Deploys the UE pod with all required configs
 
-    ```bash
-    cd path/to/k8s_srsran_open5gs/config/ues/srsue/
-    kubectl apply -k . -n open5gs
-    ```
+```bash
+cd path/to/k8s_srsran_open5gs/helm/
+helm install ues ./ue-chart -n open5gs --set ues.count=3
+```
+
+To change the number of UEs:
+```bash
+helm upgrade ues ./ue-chart -n open5gs --set ues.count=5
+```
 
 2. Open multiple terminals for each UE (e.g., `ue1` to `ue10`) and start them:
 
