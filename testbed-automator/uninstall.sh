@@ -67,6 +67,7 @@ uninstall_k8s() {
     sudo apt-mark unhold kubelet kubeadm kubectl 2>/dev/null || true
     sudo apt-get remove --purge -y --allow-change-held-packages kubeadm kubectl kubelet kubernetes-cni || true
 
+    # Remove stale apt sources from both old (v1.29) and new (v1.32) installs
     sudo rm -f /etc/apt/sources.list.d/kubernetes.list
     sudo rm -f /etc/apt/keyrings/kubernetes-apt-keyring.gpg
     sudo apt-get update
@@ -86,6 +87,7 @@ reset_k8s_cluster() {
     cecho "YELLOW" "No active Kubernetes cluster found."
   fi
 
+  # Clean up all k8s/docker/etcd state directories
   sudo rm -rf /etc/kubernetes
   sudo rm -rf ${HOME}/.kube
   sudo rm -rf /var/lib/kubelet
@@ -99,6 +101,7 @@ reset_k8s_cluster() {
   sudo rm -f /etc/apparmor.d/docker
   sudo rm -f /etc/systemd/system/etcd*
 
+  # Remove stale virtual network interfaces left behind by Flannel/CNI
   cecho "RED" "Removing stale network interfaces ..."
   for iface in flannel.1 cni0 docker0; do
     if ip link show "$iface" &>/dev/null; then
@@ -121,6 +124,7 @@ uninstall_cni() {
   sudo rm -rf /opt/cni
 }
 
+# FIX: Helm was installed via get-helm-3 script (not apt), so removal is via rm not apt-get
 uninstall_helm() {
   cecho "RED" "Removing Helm 3 ..."
   if [ -x "$(command -v helm)" ]; then
@@ -146,6 +150,8 @@ uninstall_openebs() {
   fi
 }
 
+# FIX: Bumped operator version from v0.89.1 to v0.94.0 to match install.sh
+# FIX: Added OVS bridge deletion before removing the package
 remove_ovs_cni() {
   cecho "RED" "Removing OVS CNI setup ..."
 
@@ -191,6 +197,7 @@ cleanup() {
   cecho "RED" "Cleaning up build directories and redundant packages ..."
   sudo rm -rf build
   sudo apt-get -y autoremove
+  # Clear shell command cache so removed binaries are no longer found
   hash -r
   cecho "GREEN" "Cleanup complete."
 }
