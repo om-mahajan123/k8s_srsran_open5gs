@@ -78,8 +78,11 @@ spec:
                       "schema_version": 1,
                       "__v": 0
                   }
-                  collection.replace_one({"imsi": imsi}, subscriber, upsert=True)
-                  print(f"Registered subscriber {imsi}")
+                  if collection.find_one({"imsi": imsi}) is None:
+                    collection.insert_one(subscriber)
+                    print(f"Registered subscriber {imsi}")
+                  else:
+                    print(f"Subscriber {imsi} already exists, skipping")
 
               print(f"Successfully registered {count} subscribers")
               EOF

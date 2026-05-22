@@ -3,19 +3,12 @@
 # Description: This script is designed to deploy the 5G testbed at UWaterloo.
 # Author: Niloy Saha
 # Date: 24/10/2023
-# Version: 2.0
+# Version: 2.0 
 # Usage: Please ensure that you run this script as ROOT or with ROOT permissions.
-# Notes: This script is designed for use with Ubuntu 22.04.
-# Changelog (v2.0):
-#   - Fixed: Replaced defunct baltocdn.com Helm repo with official get-helm-3 installer
-#   - Fixed: Kubernetes bumped from EOL v1.29 -> v1.32
-#   - Fixed: ovs-cni cluster-network-addons-operator bumped from v0.89.1 -> v0.94.0
-#   - Fixed: install-containerd now reconfigures containerd even if already installed
-#   - Fixed: install-packages uses pip3 install with --break-system-packages for Ubuntu 22.04+
-#   - Fixed: apt-get install lines now use -y flag consistently (helm was missing it)
-#   - Fixed: setup-ovs-cni apt-get install missing -y flag
-#   - Improved: run-as-root now exits with code 1
-#   - Improved: Added set -euo pipefail for safer script execution
+# Changes:
+#    - Replace baltocdn.com (Wasn't working) with official Helm3 installer
+#    - Updated to newer versions for K8s & ovs-cni
+#    - Added safeguard for when script fails, it terminates
 # ==============================================================================
 
 set -euo pipefail
@@ -39,11 +32,9 @@ timer-sec() {
 install-packages() {
   sudo apt-get update
   sudo apt-get install -y vim tmux git curl iproute2 iputils-ping iperf3 tcpdump python3-pip
-  # --break-system-packages required on Ubuntu 22.04+ with PEP 668 enforcement
   sudo pip3 install virtualenv --break-system-packages
 }
 
-# Based on https://stackoverflow.com/a/53463162/9346339
 cecho() {
     RED="\033[0;31m"
     GREEN="\033[0;32m"  # <-- [0 means not bold
@@ -53,12 +44,10 @@ cecho() {
     printf "${!1}${2} ${NC}\n"
 }
 
-# Disable Swap
 disable-swap() {
     cecho "GREEN" "Disabling swap ..."
     if [ -n "$(swapon -s)" ]; then
         sudo swapoff -a
-        # Comment out the swap entry in /etc/fstab to disable it permanently
         sudo sed -i '/swap/ s/^/#/' /etc/fstab
         echo "Swap has been disabled and commented out in /etc/fstab."
     else
@@ -71,8 +60,6 @@ disable-firewall() {
   sudo ufw disable
 }
 
-# Install containerd as Kubernetes CRI
-# Based on https://docs.docker.com/engine/install/ubuntu/
 install-containerd() {
   if [ -x "$(command -v containerd)" ]; then
     cecho "YELLOW" "Containerd is already installed. Checking configuration ..."
@@ -94,14 +81,12 @@ install-containerd() {
     sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   fi
 
-  # Always ensure containerd config is correct (handles both fresh installs and pre-existing)
   sudo mkdir -p /etc/containerd
   sudo bash -c 'containerd config default > /etc/containerd/config.toml'
   sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
   sudo systemctl enable containerd
   sudo systemctl restart containerd
 
-  # Check if Containerd is running
   if sudo systemctl is-active containerd &> /dev/null; then
     cecho "GREEN" "Containerd is running :)"
   else
@@ -110,8 +95,6 @@ install-containerd() {
   fi
 }
 
-# Setup K8s Networking
-# Based on https://kubernetes.io/docs/setup/production-environment/container-runtimes/#forwarding-ipv4-and-letting-iptables-see-bridged-traffic
 setup-k8s-networking() {
   cecho "GREEN" "Setting up Kubernetes networking ..."
 
@@ -133,7 +116,7 @@ EOF
 }
 
 # Install Kubernetes
-# FIX: Bumped from EOL v1.29 to v1.32
+# Change: Bumped from EOL v1.29 to v1.32
 install-k8s() {
   if [ -x "$(command -v kubectl)" ] && [ -x "$(command -v kubeadm)" ] && [ -x "$(command -v kubelet)" ]; then
     cecho "YELLOW" "Kubernetes components (kubectl, kubeadm, kubelet) are already installed."
@@ -171,7 +154,6 @@ create-k8s-cluster() {
   fi
 }
 
-# Install Flannel as CNI
 install-cni() {
   if kubectl get pods -n kube-flannel -l app=flannel 2>/dev/null | grep -q '1/1'; then
     cecho "YELLOW" "Flannel is already running. Skipping installation."
@@ -183,7 +165,6 @@ install-cni() {
   fi
 }
 
-# Install Multus as meta CNI
 install-multus() {
   if kubectl get pods -n kube-system -l app=multus 2>/dev/null | grep -q '1/1'; then
     cecho "YELLOW" "Multus is already running. Skipping installation."
@@ -199,7 +180,7 @@ install-multus() {
 }
 
 # Install Helm 3
-# FIX: Replaced defunct baltocdn.com repo with official get-helm-3 installer script
+# Change: Replaced defunct baltocdn.com repo with official get-helm-3 installer script
 install-helm() {
   HELM_VERSION=$(helm version --short 2> /dev/null || true)
 
@@ -224,8 +205,7 @@ install-openebs() {
   fi
 }
 
-# FIX: cluster-network-addons-operator bumped from v0.89.1 to v0.94.0
-# FIX: Added -y flag to apt-get install openvswitch-switch
+# Change: ovs-cni cluster-network-addons-operator bumped from v0.89.1 to v0.94.0
 setup-ovs-cni() {
   if [ -x "$(command -v ovs-vsctl)" ]; then
     cecho "YELLOW" "OpenVSwitch is already installed."
